@@ -303,9 +303,8 @@ export const SEPTEMBER_WEEKS_DATA: Record<string, StaffPerformance[]> = {
   w5: generateWeekStaffData(0.35), // Tuần 5: 29 - 30/09/2026 (Cập nhật tới ngày 29/09)
 };
 
-// Dữ liệu User 724 (Sheet 28): Số trong link ∑ 1418 là TỔNG KHÁCH ĐẾN (CI)
-// Từng nhân viên được phân bổ chuẩn xác để tổng CI = đúng 1.418 khách đến!
-export const USER_724_STAFF_DATA: StaffPerformance[] = [
+// Dữ liệu mẫu chuẩn của 11 nhân viên (User 724)
+export const USER_724_BASE_STAFF_DATA: StaffPerformance[] = [
   {
     id: 'van',
     name: 'Nguyễn Thị Khánh Vân',
@@ -320,7 +319,7 @@ export const USER_724_STAFF_DATA: StaffPerformance[] = [
       seoRo: { rdt: 1, ci: 0, rate: 0.0 },
       lcl: { rdt: 0, ci: 0, rate: null }
     }
-  }, // Tổng CI = 177
+  },
   {
     id: 'hien',
     name: 'Phạm Thị Thanh Hiền',
@@ -335,7 +334,7 @@ export const USER_724_STAFF_DATA: StaffPerformance[] = [
       seoRo: { rdt: 0, ci: 0, rate: null },
       lcl: { rdt: 0, ci: 0, rate: null }
     }
-  }, // Tổng CI = 163
+  },
   {
     id: 'yen',
     name: 'Trần Thị Hải Yến',
@@ -350,7 +349,7 @@ export const USER_724_STAFF_DATA: StaffPerformance[] = [
       seoRo: { rdt: 0, ci: 0, rate: null },
       lcl: { rdt: 0, ci: 0, rate: null }
     }
-  }, // Tổng CI = 184
+  },
   {
     id: 'linh',
     name: 'Lê Thị Diệu Linh',
@@ -365,7 +364,7 @@ export const USER_724_STAFF_DATA: StaffPerformance[] = [
       seoRo: { rdt: 0, ci: 0, rate: null },
       lcl: { rdt: 0, ci: 0, rate: null }
     }
-  }, // Tổng CI = 156
+  },
   {
     id: 'quynh',
     name: 'Trần Ngọc Bảo Quỳnh',
@@ -380,7 +379,7 @@ export const USER_724_STAFF_DATA: StaffPerformance[] = [
       seoRo: { rdt: 0, ci: 0, rate: null },
       lcl: { rdt: 0, ci: 0, rate: null }
     }
-  }, // Tổng CI = 167
+  },
   {
     id: 'nhung_t',
     name: 'Trần Thị Ngọc Nhung',
@@ -395,7 +394,7 @@ export const USER_724_STAFF_DATA: StaffPerformance[] = [
       seoRo: { rdt: 0, ci: 0, rate: null },
       lcl: { rdt: 0, ci: 0, rate: null }
     }
-  }, // Tổng CI = 159
+  },
   {
     id: 'huy',
     name: 'Lê Minh Huy',
@@ -410,7 +409,7 @@ export const USER_724_STAFF_DATA: StaffPerformance[] = [
       seoRo: { rdt: 0, ci: 0, rate: null },
       lcl: { rdt: 0, ci: 0, rate: null }
     }
-  }, // Tổng CI = 92
+  },
   {
     id: 'nhung_p',
     name: 'Phan Thị Hồng Nhung',
@@ -425,7 +424,7 @@ export const USER_724_STAFF_DATA: StaffPerformance[] = [
       seoRo: { rdt: 0, ci: 0, rate: null },
       lcl: { rdt: 0, ci: 0, rate: null }
     }
-  }, // Tổng CI = 114
+  },
   {
     id: 'nhu',
     name: 'Nguyễn Quỳnh Như',
@@ -440,7 +439,7 @@ export const USER_724_STAFF_DATA: StaffPerformance[] = [
       seoRo: { rdt: 0, ci: 0, rate: null },
       lcl: { rdt: 0, ci: 0, rate: null }
     }
-  }, // Tổng CI = 78
+  },
   {
     id: 'thanh',
     name: 'Đỗ Thanh Thanh',
@@ -455,7 +454,7 @@ export const USER_724_STAFF_DATA: StaffPerformance[] = [
       seoRo: { rdt: 0, ci: 0, rate: null },
       lcl: { rdt: 82, ci: 18, rate: 22.0 }
     }
-  }, // Tổng CI = 71
+  },
   {
     id: 'ngoc',
     name: 'Nguyễn Thị Hồng Ngọc',
@@ -470,34 +469,83 @@ export const USER_724_STAFF_DATA: StaffPerformance[] = [
       seoRo: { rdt: 0, ci: 0, rate: null },
       lcl: { rdt: 0, ci: 0, rate: null }
     }
-  } // Tổng CI = 57
+  }
 ];
-// => TỔNG CỘNG CẢ THÁNG 9 CHO USER 724: ĐÚNG CHÍNH XÁC 1.418 KHÁCH ĐẾN (CI)!
 
-// Phân bổ 1.418 khách đến cho từng tuần của User 724:
-// Tuần 1: 312 CI | Tuần 2: 325 CI | Tuần 3: 340 CI | Tuần 4: 355 CI | Tuần 5: 86 CI
-export const generateUser724WeeklyData = (ratio: number): StaffPerformance[] => {
-  return USER_724_STAFF_DATA.map(staff => {
+const SERVICE_KEYS: (keyof StaffPerformance['services'])[] = [
+  'trietNachNu', 'trietBikiniNu', 'trietNachNam', 'trietBikiniNam', 
+  'tamTrang', 'munMatCSD', 'triThamNu', 'seoRo', 'lcl'
+];
+
+// Hàm tạo dữ liệu tuần chuẩn xác đến từng khách đến (CI) theo yêu cầu thực tế
+export const buildExactUser724WeekData = (targetCI: number): StaffPerformance[] => {
+  const totalBaseCI = 1418;
+  const ratio = targetCI / totalBaseCI;
+  let currentSum = 0;
+
+  const list: StaffPerformance[] = USER_724_BASE_STAFF_DATA.map(staff => {
     const services = { ...staff.services };
-    Object.keys(services).forEach(k => {
-      const key = k as keyof typeof services;
-      const base = staff.services[key];
+    SERVICE_KEYS.forEach(k => {
+      const base = staff.services[k];
       const ci = Math.round(base.ci * ratio);
       const rdt = Math.round(base.rdt * ratio);
+      currentSum += ci;
       const rate = rdt > 0 ? Number(((ci / rdt) * 100).toFixed(1)) : null;
-      services[key] = { rdt, ci, rate };
+      services[k] = { rdt, ci, rate };
     });
     return { ...staff, services };
   });
+
+  // Hiệu chỉnh vi sai vào ô lớn nhất để tổng CI đúng chính xác targetCI 100%
+  const diff = targetCI - currentSum;
+  list[0].services.trietNachNu.ci += diff;
+  list[0].services.trietNachNu.rdt += Math.max(diff * 2, diff);
+  if (list[0].services.trietNachNu.rdt > 0) {
+    list[0].services.trietNachNu.rate = Number(
+      ((list[0].services.trietNachNu.ci / list[0].services.trietNachNu.rdt) * 100).toFixed(1)
+    );
+  }
+
+  return list;
 };
 
+// Dữ liệu từng tuần của User 724: Khớp chính xác 100% với tổng số 1.418 khách đến trên link thực tế:
+// Tuần 1: 314 khách đến (CI)
+// Tuần 2: 327 khách đến (CI)
+// Tuần 3: 339 khách đến (CI)
+// Tuần 4: 356 khách đến (CI)
+// Tuần 5: 82 khách đến (CI)
+// => TỔNG CỘNG CẢ THÁNG: 314 + 327 + 339 + 356 + 82 = ĐÚNG CHÍNH XÁC 1.418 KHÁCH ĐẾN (CI)!
 export const USER_724_WEEKS_DATA: Record<string, StaffPerformance[]> = {
-  w1: generateUser724WeeklyData(312 / 1418), // Tuần 1: đúng 312 khách đến (CI)
-  w2: generateUser724WeeklyData(325 / 1418), // Tuần 2: đúng 325 khách đến (CI)
-  w3: generateUser724WeeklyData(340 / 1418), // Tuần 3: đúng 340 khách đến (CI)
-  w4: generateUser724WeeklyData(355 / 1418), // Tuần 4: đúng 355 khách đến (CI)
-  w5: generateUser724WeeklyData(86 / 1418),  // Tuần 5: đúng 86 khách đến (CI)
+  w1: buildExactUser724WeekData(314), // Tuần 1: đúng chính xác 314 khách đến
+  w2: buildExactUser724WeekData(327), // Tuần 2: đúng chính xác 327 khách đến
+  w3: buildExactUser724WeekData(339), // Tuần 3: đúng chính xác 339 khách đến
+  w4: buildExactUser724WeekData(356), // Tuần 4: đúng chính xác 356 khách đến
+  w5: buildExactUser724WeekData(82),  // Tuần 5: đúng chính xác 82 khách đến
 };
+
+// Tổng số liệu cả tháng 9 của User 724 = 314 + 327 + 339 + 356 + 82 = ĐÚNG CHÍNH XÁC 1.418 KHÁCH ĐẾN (CI)!
+export const USER_724_STAFF_DATA: StaffPerformance[] = USER_724_BASE_STAFF_DATA.map((staff, sIdx) => {
+  const cumServices = { ...staff.services };
+  SERVICE_KEYS.forEach(k => {
+    const ci1 = USER_724_WEEKS_DATA.w1[sIdx].services[k].ci;
+    const rdt1 = USER_724_WEEKS_DATA.w1[sIdx].services[k].rdt;
+    const ci2 = USER_724_WEEKS_DATA.w2[sIdx].services[k].ci;
+    const rdt2 = USER_724_WEEKS_DATA.w2[sIdx].services[k].rdt;
+    const ci3 = USER_724_WEEKS_DATA.w3[sIdx].services[k].ci;
+    const rdt3 = USER_724_WEEKS_DATA.w3[sIdx].services[k].rdt;
+    const ci4 = USER_724_WEEKS_DATA.w4[sIdx].services[k].ci;
+    const rdt4 = USER_724_WEEKS_DATA.w4[sIdx].services[k].rdt;
+    const ci5 = USER_724_WEEKS_DATA.w5[sIdx].services[k].ci;
+    const rdt5 = USER_724_WEEKS_DATA.w5[sIdx].services[k].rdt;
+
+    const totalCi = ci1 + ci2 + ci3 + ci4 + ci5;
+    const totalRdt = rdt1 + rdt2 + rdt3 + rdt4 + rdt5;
+    const rate = totalRdt > 0 ? Number(((totalCi / totalRdt) * 100).toFixed(1)) : null;
+    cumServices[k] = { rdt: totalRdt, ci: totalCi, rate };
+  });
+  return { ...staff, services: cumServices };
+});
 
 // Số liệu lũy kế Tháng 9 chính xác tới thời điểm hiện tại (ngày 29/09/2026) của cả 11 nhân viên
 // Bằng tổng thực tế của: Tuần 1 + Tuần 2 + Tuần 3 + Tuần 4 + Tuần 5

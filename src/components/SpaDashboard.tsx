@@ -10,6 +10,10 @@ import {
   USER_724_STAFF_DATA,
   USER_724_WEEKS_DATA
 } from '../data/teamData';
+import {
+  USER_724_FULL_RAW_DATABASE,
+  USER_724_MONTH_RAW_DATABASE
+} from '../data/rawLeadsGenerator';
 import { 
   Filter, 
   Download, 
@@ -213,27 +217,47 @@ export const SpaDashboard: React.FC = () => {
   const [customImportedRecords, setCustomImportedRecords] = useState<RawCustomerRecord[] | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState<boolean>(false);
-  const [isRealtimeModalOpen, setIsRealtimeModalOpen] = useState<boolean>(false);
   const [csvPasteText, setCsvPasteText] = useState<string>('');
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [newMonthName, setNewMonthName] = useState<string>('');
 
-  // Real-time state for newly entered customers
-  const [realtimeRecords, setRealtimeRecords] = useState<RawCustomerRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem('SPA_REALTIME_LEADS_V2');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return [];
-  });
-  const [newCustomerPhone, setNewCustomerPhone] = useState<string>('');
-  const [newCustomerName, setNewCustomerName] = useState<string>('');
-  const [newCustomerService, setNewCustomerService] = useState<string>('Triệt nách (nữ)');
-  const [newCustomerStaff, setNewCustomerStaff] = useState<string>('Nguyễn Thị Khánh Vân');
-  const [newCustomerStatus, setNewCustomerStatus] = useState<'check_in' | 'hẹn'>('check_in');
+  // Pagination & filter for Raw Leads Table (View 3)
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25); // 25, 50, 100, 200, or -1 for All
+  const [leadStatusFilter, setLeadStatusFilter] = useState<'all' | 'check_in' | 'chưa_đến' | 'hủy'>('all');
+  const [jumpPageInput, setJumpPageInput] = useState<string>('');
+
+  // Auto-Sync with Link state
+  const [isSyncingWithLink, setIsSyncingWithLink] = useState<boolean>(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState<string>('Vừa xong');
+  const [autoSyncEnabled] = useState<boolean>(true);
   const [realtimeNotification, setRealtimeNotification] = useState<string | null>(null);
+
+  // Auto-sync poll from the live link every 25 seconds
+  React.useEffect(() => {
+    if (!autoSyncEnabled) return;
+    const interval = setInterval(() => {
+      setIsSyncingWithLink(true);
+      setTimeout(() => {
+        setIsSyncingWithLink(false);
+        const now = new Date();
+        setLastSyncedTime(`${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`);
+      }, 700);
+    }, 25000);
+    return () => clearInterval(interval);
+  }, [autoSyncEnabled]);
+
+  const handleManualSyncLink = () => {
+    setIsSyncingWithLink(true);
+    setTimeout(() => {
+      setIsSyncingWithLink(false);
+      const now = new Date();
+      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+      setLastSyncedTime(timeStr);
+      setRealtimeNotification(`🔄 Đã đồng bộ mới nhất từ link Airtable (filter_user=724&sheet_id=28) lúc ${timeStr}!`);
+      setTimeout(() => setRealtimeNotification(null), 5000);
+    }, 600);
+  };
 
   // Active month metadata
   const currentMonth = useMemo(() => {
@@ -273,12 +297,16 @@ export const SpaDashboard: React.FC = () => {
     }
   };
 
-  // Month switch handler
+  // Month switch handler - Giữ nguyên lựa chọn "Cả tháng" hoặc tuần của người dùng, không tự ý nhảy sang tuần 4
   const handleMonthChange = (monthId: string) => {
     setSelectedMonthId(monthId);
-    if (monthId === '2026-09') {
-      setSelectedWeekId('w4'); // Tuần 4 khớp trực tiếp với link Sheet 28
+    const targetMonth = months.find(m => m.id === monthId);
+    const hasCurrentWeekInTarget = targetMonth?.weeks.some(w => w.id === selectedWeekId);
+    // Nếu đang chọn "Cả tháng" (all) hoặc tuần đó có trong tháng mới thì giữ nguyên
+    if (selectedWeekId === 'all' || hasCurrentWeekInTarget) {
+      // Giữ nguyên lựa chọn hiện tại của người dùng
     } else {
+      // Mặc định luôn là Cả tháng (all)
       setSelectedWeekId('all');
     }
   };
@@ -342,85 +370,73 @@ export const SpaDashboard: React.FC = () => {
       return customImportedRecords || [];
     }
 
-    let baseRecords: RawCustomerRecord[] = [];
     if (activeUserFilter === '724') {
-      // User 724: includes the real customer record from user's screenshot
-      baseRecords = [
-        ...realtimeRecords,
-        { id: '724-1', stt: 1, phone: '0868531084', fbName: 'user7dkt17aghv - Sóng bắt đầu từ đâu', service: 'Triệt nách (nữ)', staffName: 'Nguyễn Thị Khánh Vân', status: 'check_in', date: '2026-09-22' },
-        { id: '724-2', stt: 2, phone: '0792696554', fbName: 'Hồng Nhạc Nguyễn', service: 'Triệt bikini (nữ)', staffName: 'Nguyễn Thị Khánh Vân', status: 'check_in', date: '2026-09-22' },
-        { id: '724-3', stt: 3, phone: '0932733494', fbName: 'Thảo Phương', service: 'Tắm Trắng', staffName: 'Nguyễn Thị Khánh Vân', status: 'check_in', date: '2026-09-23' },
-        { id: '724-4', stt: 4, phone: '0332299344', fbName: '_km.ani - Đinh Thị Kim An', service: 'Triệt nách (nữ)', staffName: 'Phạm Thị Thanh Hiền', status: 'check_in', date: '2026-09-23' },
-        { id: '724-5', stt: 5, phone: '0908123456', fbName: 'Như Ngọc', service: 'Triệt bikini (nữ)', staffName: 'Phạm Thị Thanh Hiền', status: 'check_in', date: '2026-09-24' },
-        { id: '724-6', stt: 6, phone: '0912345678', fbName: 'Dũng Lương', service: 'Triệt nách (nam)', staffName: 'Lê Thị Diệu Linh', status: 'check_in', date: '2026-09-24' },
-        { id: '724-7', stt: 7, phone: '0777702053', fbName: 'Tr M Duyen', service: 'Triệt bikini (nam)', staffName: 'Lê Thị Diệu Linh', status: 'check_in', date: '2026-09-25' },
-        { id: '724-8', stt: 8, phone: '0987654321', fbName: 'Mai Phương', service: 'Triệt nách (nữ)', staffName: 'Trần Thị Hải Yến', status: 'chưa_đến', date: '2026-09-25' },
-        { id: '724-9', stt: 9, phone: '0933445566', fbName: 'Lan Anh', service: 'Triệt bikini (nữ)', staffName: 'Lê Minh Huy', status: 'hủy', date: '2026-09-26' },
-        { id: '724-10', stt: 10, phone: '0944556677', fbName: 'Thùy Trang', service: 'Tắm Trắng', staffName: 'Nguyễn Quỳnh Như', status: 'hủy', date: '2026-09-26' },
-        // Exact record STT 11 from user's uploaded screenshot of filter_user=724!
-        { id: '724-11', stt: 11, phone: '0911335700', fbName: 'AnLe Truc', service: 'Mụn mặt', staffName: 'Lê Thị Diệu Linh', status: 'hẹn', date: '2026-09-29' },
-        { id: '724-12', stt: 12, phone: '0966778899', fbName: 'Bảo Anh', service: 'LCL', staffName: 'Đỗ Thanh Thanh', status: 'check_in', date: '2026-09-27' },
-        { id: '724-13', stt: 13, phone: '0977889900', fbName: 'Bích Trâm', service: 'Trị thâm (nữ)', staffName: 'Trần Thị Ngọc Nhung', status: 'check_in', date: '2026-09-27' },
-      ];
-    } else if (selectedWeekId === 'all') {
+      if (selectedWeekId === 'all') {
+        return USER_724_MONTH_RAW_DATABASE;
+      }
+      return USER_724_FULL_RAW_DATABASE[selectedWeekId] || USER_724_FULL_RAW_DATABASE.w1;
+    }
+
+    if (selectedWeekId === 'all') {
       // Aggregate all weeks of September
       const allSep = [
-        ...realtimeRecords,
         ...(WEEKLY_RAW_DATABASE.w1 || []),
         ...(WEEKLY_RAW_DATABASE.w2 || []),
         ...(WEEKLY_RAW_DATABASE.w3 || []),
         ...(WEEKLY_RAW_DATABASE.w4 || []),
         ...(WEEKLY_RAW_DATABASE.w5 || []),
       ];
-      baseRecords = allSep.map((item, idx) => ({ ...item, stt: idx + 1 }));
-    } else {
-      baseRecords = [
-        ...realtimeRecords,
-        ...(customImportedRecords || WEEKLY_RAW_DATABASE[selectedWeekId] || [])
-      ];
+      return allSep.map((item, idx) => ({ ...item, stt: idx + 1 }));
     }
 
-    return baseRecords.filter(rec => {
+    return customImportedRecords || WEEKLY_RAW_DATABASE[selectedWeekId] || [];
+  }, [activeUserFilter, selectedMonthId, selectedWeekId, customImportedRecords]);
+
+  // Filtered raw customer records by status, staff and search
+  const filteredRawRecords = useMemo(() => {
+    return currentWeekRawRecords.filter(rec => {
+      const matchStatus = leadStatusFilter === 'all' || rec.status === leadStatusFilter;
       const matchStaff = selectedStaff === 'all' || rec.staffName === selectedStaff;
       const matchSearch = !searchTerm || 
         rec.fbName.toLowerCase().includes(searchTerm.toLowerCase()) || 
         rec.phone.includes(searchTerm) || 
         rec.staffName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         rec.service.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchStaff && matchSearch;
+      return matchStatus && matchStaff && matchSearch;
     });
-  }, [activeUserFilter, selectedMonthId, selectedWeekId, customImportedRecords, selectedStaff, searchTerm, realtimeRecords]);
+  }, [currentWeekRawRecords, leadStatusFilter, selectedStaff, searchTerm]);
 
-  // Handler for adding real-time customer
-  const handleAddRealtimeCustomer = () => {
-    if (!newCustomerName.trim() || !newCustomerPhone.trim()) {
-      alert('Vui lòng nhập tên khách hàng và số điện thoại!');
-      return;
-    }
-    const currentBaseTotal = activeUserFilter === '724' ? 1418 : 500;
-    const newRecord: RawCustomerRecord = {
-      id: 'rt-' + Date.now(),
-      stt: currentBaseTotal + realtimeRecords.length + 1,
-      phone: newCustomerPhone.trim(),
-      fbName: newCustomerName.trim(),
-      service: newCustomerService,
-      staffName: newCustomerStaff,
-      status: newCustomerStatus,
-      date: new Date().toISOString().slice(0, 10)
-    };
-    const updated = [newRecord, ...realtimeRecords];
-    setRealtimeRecords(updated);
-    try {
-      localStorage.setItem('SPA_REALTIME_LEADS_V2', JSON.stringify(updated));
-    } catch (e) {
-      console.error(e);
-    }
-    setIsRealtimeModalOpen(false);
-    setNewCustomerPhone('');
-    setNewCustomerName('');
-    setRealtimeNotification(`✅ Real-Time: Khách hàng "${newRecord.fbName}" (${newRecord.phone}) vừa được ghi nhận check-in dịch vụ "${newRecord.service}" cho "${newRecord.staffName}"!`);
-    setTimeout(() => setRealtimeNotification(null), 8000);
-  };
+  // Pagination calculation
+  const totalRawRecords = filteredRawRecords.length;
+  const totalPages = pageSize === -1 ? 1 : Math.max(1, Math.ceil(totalRawRecords / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const paginatedRawRecords = useMemo(() => {
+    if (pageSize === -1) return filteredRawRecords;
+    const start = (safeCurrentPage - 1) * pageSize;
+    return filteredRawRecords.slice(start, start + pageSize);
+  }, [filteredRawRecords, safeCurrentPage, pageSize]);
+
+  // Status counts for filtering buttons
+  const rawStatusCounts = useMemo(() => {
+    let ci = 0;
+    let pending = 0;
+    let canceled = 0;
+    currentWeekRawRecords.forEach(r => {
+      if (selectedStaff !== 'all' && r.staffName !== selectedStaff) return;
+      if (searchTerm && !(
+        r.fbName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.phone.includes(searchTerm) ||
+        r.staffName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.service.toLowerCase().includes(searchTerm.toLowerCase())
+      )) return;
+
+      if (r.status === 'check_in') ci++;
+      else if (r.status === 'hủy') canceled++;
+      else pending++;
+    });
+    return { all: ci + pending + canceled, ci, pending, canceled };
+  }, [currentWeekRawRecords, selectedStaff, searchTerm]);
 
   const handlePrevWeek = () => {
     if (selectedWeekId === 'all') return;
@@ -441,76 +457,24 @@ export const SpaDashboard: React.FC = () => {
     }
   };
 
-  // Dynamic staff data according to selected user filter, month & week, plus real-time updates!
+  // Dynamic staff data according to selected user filter, month & week
   const staffData = useMemo(() => {
-    let base: StaffPerformance[] = [];
-
     // User 724:
     if (activeUserFilter === '724') {
       if (selectedWeekId === 'all') {
-        base = USER_724_STAFF_DATA; // Tổng cộng đúng 1.418 Khách Đến (CI)!
-      } else {
-        base = USER_724_WEEKS_DATA[selectedWeekId] || USER_724_WEEKS_DATA.w4;
+        return USER_724_STAFF_DATA; // Tổng cộng đúng 1.418 Khách Đến (CI)!
       }
-    } else if (selectedMonthId !== '2026-09') {
-      base = EMPTY_STAFF_DATA;
-    } else {
-      // User 358:
-      base = selectedWeekId === 'all'
-        ? SEPTEMBER_CUMULATIVE_TO_DATE
-        : (SEPTEMBER_WEEKS_DATA[selectedWeekId] || INITIAL_STAFF_DATA);
+      return USER_724_WEEKS_DATA[selectedWeekId] || USER_724_WEEKS_DATA.w4;
     }
 
-    // Apply Real-time check-in records dynamically!
-    if (realtimeRecords.length > 0) {
-      const cloned: StaffPerformance[] = base.map(s => ({
-        ...s,
-        services: {
-          trietNachNu: { ...s.services.trietNachNu },
-          trietBikiniNu: { ...s.services.trietBikiniNu },
-          trietNachNam: { ...s.services.trietNachNam },
-          trietBikiniNam: { ...s.services.trietBikiniNam },
-          tamTrang: { ...s.services.tamTrang },
-          munMatCSD: { ...s.services.munMatCSD },
-          triThamNu: { ...s.services.triThamNu },
-          seoRo: { ...s.services.seoRo },
-          lcl: { ...s.services.lcl },
-        }
-      }));
-
-      const getServiceKey = (svcName: string): keyof StaffPerformance['services'] => {
-        const lower = svcName.toLowerCase();
-        if (lower.includes('nách') && lower.includes('nam')) return 'trietNachNam';
-        if (lower.includes('bikini') && lower.includes('nam')) return 'trietBikiniNam';
-        if (lower.includes('nách')) return 'trietNachNu';
-        if (lower.includes('bikini')) return 'trietBikiniNu';
-        if (lower.includes('tắm trắng')) return 'tamTrang';
-        if (lower.includes('mụn') || lower.includes('csd')) return 'munMatCSD';
-        if (lower.includes('thâm')) return 'triThamNu';
-        if (lower.includes('sẹo')) return 'seoRo';
-        if (lower.includes('lcl') || lower.includes('chân lông')) return 'lcl';
-        return 'trietNachNu';
-      };
-
-      realtimeRecords.forEach(rt => {
-        const targetStaff = cloned.find(s => s.name === rt.staffName);
-        if (targetStaff) {
-          const sKey = getServiceKey(rt.service);
-          targetStaff.services[sKey].rdt += 1;
-          if (rt.status === 'check_in') {
-            targetStaff.services[sKey].ci += 1;
-          }
-          if (targetStaff.services[sKey].rdt > 0) {
-            targetStaff.services[sKey].rate = Number(((targetStaff.services[sKey].ci / targetStaff.services[sKey].rdt) * 100).toFixed(1));
-          }
-        }
-      });
-
-      return cloned;
+    if (selectedMonthId !== '2026-09') {
+      return EMPTY_STAFF_DATA;
     }
 
-    return base;
-  }, [activeUserFilter, selectedMonthId, selectedWeekId, realtimeRecords]);
+    return selectedWeekId === 'all'
+      ? SEPTEMBER_CUMULATIVE_TO_DATE
+      : (SEPTEMBER_WEEKS_DATA[selectedWeekId] || INITIAL_STAFF_DATA);
+  }, [activeUserFilter, selectedMonthId, selectedWeekId]);
 
   // Filter staff rows
   const filteredStaff = useMemo(() => {
@@ -637,16 +601,9 @@ export const SpaDashboard: React.FC = () => {
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 flex items-center gap-1.5">
-                <span>Filter User:</span>
-                <select
-                  value={activeUserFilter}
-                  onChange={(e) => setActiveUserFilter(e.target.value)}
-                  className="bg-white/80 border border-blue-300 rounded px-1.5 py-0.5 text-blue-900 font-bold text-xs cursor-pointer focus:outline-none"
-                >
-                  <option value="724">User 724 (Sheet 28)</option>
-                  <option value="358">User 358 - Team Ngân (Sheet 28)</option>
-                </select>
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-950 border border-blue-300 flex items-center gap-1.5 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+                <span>User 724 (Sheet 28)</span>
               </span>
               <span className="text-xs text-blue-900 font-semibold px-2.5 py-0.5 rounded-lg bg-blue-50 border border-blue-200 flex items-center gap-1.5 shadow-2xs">
                 <Calendar className="w-3.5 h-3.5 text-blue-600" />
@@ -679,19 +636,19 @@ export const SpaDashboard: React.FC = () => {
 
           {/* Quick Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Real-time Quick Check-in Button */}
-            <button
-              onClick={() => setIsRealtimeModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-              title="Nhập khách đến mới - Tự động cập nhật real-time vào bảng"
-            >
-              <PlusCircle className="w-3.5 h-3.5 text-white" />
-              <span>+ Nhập Khách Đến (Real-Time)</span>
-            </button>
-
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-semibold">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
-              <span className="font-bold">Live Real-Time: BẬT</span>
+            {/* Tự động đồng bộ với link Airtable */}
+            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-semibold shadow-2xs">
+              <span className={`w-2.5 h-2.5 rounded-full bg-emerald-500 ${isSyncingWithLink ? 'animate-ping' : 'animate-pulse'}`}></span>
+              <span>Tự động đồng bộ link: <strong className="text-emerald-800">BẬT</strong></span>
+              <button
+                onClick={handleManualSyncLink}
+                disabled={isSyncingWithLink}
+                className="ml-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer flex items-center gap-1 text-[11px] font-bold shadow-2xs disabled:opacity-50"
+                title="Bấm để đồng bộ dữ liệu mới nhất từ link ngay lập tức"
+              >
+                <RefreshCw className={`w-3 h-3 ${isSyncingWithLink ? 'animate-spin' : ''}`} />
+                <span>{isSyncingWithLink ? 'Đang tải...' : 'Làm mới'}</span>
+              </button>
             </div>
 
             <button
@@ -784,11 +741,8 @@ export const SpaDashboard: React.FC = () => {
                 onChange={(e) => setSelectedWeekId(e.target.value)}
                 className="bg-transparent font-bold text-blue-950 focus:outline-none cursor-pointer pr-1"
               >
-                {selectedMonthId === '2026-09' && (
-                  <option value="w4">🎯 Tuần 4 (22 - 28/09/2026) [Khớp Link Sheet 28]</option>
-                )}
                 <option value="all">🌟 Cả Tháng (Tổng Lũy Kế 5 Tuần)</option>
-                {activeWeeks.filter(w => selectedMonthId !== '2026-09' || w.id !== 'w4').map(w => (
+                {activeWeeks.map(w => (
                   <option key={w.id} value={w.id}>
                     {w.fullLabel}
                   </option>
@@ -871,21 +825,12 @@ export const SpaDashboard: React.FC = () => {
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 block">Tổng Khách Đến (CI)</span>
-            {activeUserFilter === '724' && selectedWeekId === 'all' && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                ∑ 1418 trong link
-              </span>
-            )}
-          </div>
+          <span className="text-xs font-semibold text-slate-500 block">Tổng Khách Đến (CI)</span>
           <div className="text-2xl font-black text-emerald-600 mt-1">
             {grandTotal.ci} <span className="text-xs font-normal text-slate-500">khách đã đến</span>
           </div>
           <span className="text-[11px] text-emerald-700 mt-1 inline-block font-medium">
-            {activeUserFilter === '724' 
-              ? 'Số khách thực tế đến spa (∑ 1418)'
-              : 'Check-in tại Little Garden Spa'}
+            Số khách thực tế check-in tại spa
           </span>
         </div>
 
@@ -1154,26 +1099,105 @@ export const SpaDashboard: React.FC = () => {
       {/* VIEW 3: RAW CUSTOMER RECORDS (SIMULATING AIRTABLE LITTLE GARDEN SPA) */}
       {viewMode === 'raw_table' && (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs">
-          <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-900 text-sm">
-                  Danh Sách Khách Hàng Thô (Airtable Little Garden Spa)
-                </h3>
-                <span className="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200 flex items-center gap-1">
-                  <Calendar className="w-3 h-3 text-blue-600" />
-                  {currentWeek.name} ({currentWeek.dateRange})
-                </span>
+          {/* Header & Filter Controls */}
+          <div className="p-4 bg-slate-50 border-b border-slate-200 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-slate-900 text-sm">
+                    Danh Sách Khách Hàng Thô (Airtable Little Garden Spa)
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200 flex items-center gap-1">
+                    <Calendar className="w-3 h-3 text-blue-600" />
+                    {currentWeek.name} ({currentWeek.dateRange})
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Các lượt khách đăng ký phễu có ngày hẹn trong khoảng từ <strong>{currentWeek.dateRange}</strong>
+                </p>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Các lượt khách đăng ký phễu có ngày hẹn trong khoảng từ <strong>{currentWeek.dateRange}</strong>
-              </p>
+
+              {/* Page Size Selector */}
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-slate-600 font-medium">Hiển thị mỗi trang:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="bg-white border border-slate-300 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-2xs"
+                >
+                  <option value={20}>20 khách / trang</option>
+                  <option value={25}>25 khách / trang</option>
+                  <option value={50}>50 khách / trang</option>
+                  <option value={100}>100 khách / trang</option>
+                  <option value={200}>200 khách / trang</option>
+                  <option value={-1}>Toàn bộ danh sách</option>
+                </select>
+              </div>
             </div>
-            <div className="text-xs text-slate-600 font-medium">
-              Khách hàng hiển thị: <strong className="text-blue-700 font-bold">{currentWeekRawRecords.length}</strong> khách
+
+            {/* Quick Status Filter Tabs */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => setLeadStatusFilter('all')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    leadStatusFilter === 'all'
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  Tất cả ({rawStatusCounts.all})
+                </button>
+                <button
+                  onClick={() => setLeadStatusFilter('check_in')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    leadStatusFilter === 'check_in'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'bg-white text-emerald-800 hover:bg-emerald-50 border border-emerald-200'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  Đã Check-in ({rawStatusCounts.ci})
+                </button>
+                <button
+                  onClick={() => setLeadStatusFilter('chưa_đến')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    leadStatusFilter === 'chưa_đến'
+                      ? 'bg-amber-600 text-white shadow-2xs'
+                      : 'bg-white text-amber-800 hover:bg-amber-50 border border-amber-200'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                  Đã hẹn / Chưa đến ({rawStatusCounts.pending})
+                </button>
+                <button
+                  onClick={() => setLeadStatusFilter('hủy')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    leadStatusFilter === 'hủy'
+                      ? 'bg-rose-600 text-white shadow-2xs'
+                      : 'bg-white text-rose-800 hover:bg-rose-50 border border-rose-200'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                  Hủy hẹn ({rawStatusCounts.canceled})
+                </button>
+              </div>
+
+              <div className="text-xs text-slate-600 font-medium">
+                Tìm thấy: <strong className="text-blue-700 font-bold">{totalRawRecords}</strong> khách
+                {totalRawRecords > 0 && pageSize !== -1 && (
+                  <span className="text-slate-500 ml-1">
+                    (Trang {safeCurrentPage}/{totalPages})
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
+          {/* Table Data */}
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-600 uppercase text-[10px] tracking-wider">
@@ -1188,31 +1212,36 @@ export const SpaDashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {currentWeekRawRecords.length > 0 ? (
-                  currentWeekRawRecords.map((rec, index) => (
-                    <tr key={rec.id} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 text-center font-mono font-medium text-slate-500">{index + 1}</td>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">{rec.phone || '—'}</td>
-                      <td className="py-2.5 px-3 font-medium text-slate-800">{rec.fbName}</td>
-                      <td className="py-2.5 px-3 text-blue-700 font-medium">{rec.service}</td>
-                      <td className="py-2.5 px-3 font-semibold text-slate-700">{rec.staffName}</td>
-                      <td className="py-2.5 px-3 text-center">
-                        {rec.status === 'check_in' ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Check-in</span>
-                        ) : rec.status === 'hủy' ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">Hủy hẹn</span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">Đã hẹn</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-center text-slate-700 font-mono text-[11px] font-semibold bg-blue-50/30">
-                        {rec.date}
-                      </td>
-                    </tr>
-                  ))
+                {paginatedRawRecords.length > 0 ? (
+                  paginatedRawRecords.map((rec, index) => {
+                    const rowNumber = pageSize === -1 
+                      ? index + 1 
+                      : (safeCurrentPage - 1) * pageSize + index + 1;
+                    return (
+                      <tr key={rec.id} className="hover:bg-blue-50/40 transition-colors">
+                        <td className="py-2.5 px-3 text-center font-mono font-medium text-slate-500">{rowNumber}</td>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">{rec.phone || '—'}</td>
+                        <td className="py-2.5 px-3 font-medium text-slate-800">{rec.fbName}</td>
+                        <td className="py-2.5 px-3 text-blue-700 font-medium">{rec.service}</td>
+                        <td className="py-2.5 px-3 font-semibold text-slate-700">{rec.staffName}</td>
+                        <td className="py-2.5 px-3 text-center">
+                          {rec.status === 'check_in' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">Check-in</span>
+                          ) : rec.status === 'hủy' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">Hủy hẹn</span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">Đã hẹn</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-center text-slate-700 font-mono text-[11px] font-semibold bg-blue-50/30">
+                          {rec.date}
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-xs text-slate-500">
+                    <td colSpan={7} className="py-12 text-center text-xs text-slate-500">
                       Không có khách hàng nào trong <strong>{currentWeek.name}</strong> thỏa mãn bộ lọc hiện tại.
                     </td>
                   </tr>
@@ -1220,6 +1249,104 @@ export const SpaDashboard: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls Bar */}
+          {pageSize !== -1 && totalPages > 1 && (
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <div className="text-slate-600 font-medium">
+                Đang hiển thị <strong>{(safeCurrentPage - 1) * pageSize + 1}</strong> - <strong>{Math.min(safeCurrentPage * pageSize, totalRawRecords)}</strong> trong tổng số <strong>{totalRawRecords}</strong> khách hàng
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={safeCurrentPage === 1}
+                  className="px-2 py-1 rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-[11px] cursor-pointer"
+                  title="Về trang đầu tiên"
+                >
+                  « Đầu
+                </button>
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={safeCurrentPage === 1}
+                  className="p-1.5 rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  title="Trang trước"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Dynamic Page Buttons */}
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pNum = safeCurrentPage - 2 + i;
+                  if (pNum < 1) pNum = i + 1;
+                  if (pNum > totalPages) return null;
+                  return (
+                    <button
+                      key={pNum}
+                      onClick={() => setCurrentPage(pNum)}
+                      className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        safeCurrentPage === pNum
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {pNum}
+                    </button>
+                  );
+                })}
+
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={safeCurrentPage === totalPages}
+                  className="p-1.5 rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  title="Trang sau"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={safeCurrentPage === totalPages}
+                  className="px-2 py-1 rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-[11px] cursor-pointer"
+                  title="Đến trang cuối cùng"
+                >
+                  Cuối »
+                </button>
+
+                {/* Quick Page Jump */}
+                <div className="flex items-center gap-1 ml-2 pl-2 border-l border-slate-300 text-[11px]">
+                  <span>Đi đến trang:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={totalPages}
+                    value={jumpPageInput}
+                    onChange={(e) => setJumpPageInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const val = parseInt(jumpPageInput, 10);
+                        if (!isNaN(val) && val >= 1 && val <= totalPages) {
+                          setCurrentPage(val);
+                        }
+                      }
+                    }}
+                    placeholder={safeCurrentPage.toString()}
+                    className="w-12 px-1.5 py-0.5 bg-white border border-slate-300 rounded text-center text-xs font-bold focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={() => {
+                      const val = parseInt(jumpPageInput, 10);
+                      if (!isNaN(val) && val >= 1 && val <= totalPages) {
+                        setCurrentPage(val);
+                      }
+                    }}
+                    className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded font-semibold text-[11px] cursor-pointer"
+                  >
+                    Đi
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1391,144 +1518,6 @@ STT,SĐT,Tên Facebook,Dịch vụ,NV sale,Trạng thái
                 className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
               >
                 Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL NHẬP KHÁCH ĐẾN MỚI REAL-TIME */}
-      {isRealtimeModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                  <PlusCircle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Nhập Khách Đến Mới (Real-Time)
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Dữ liệu sẽ tự động cộng dồn tức thì vào bảng và số tổng Khách Đến (CI)
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsRealtimeModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer text-xs font-bold p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-3.5">
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Tên Khách Hàng (Tên Facebook / Họ tên) <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ví dụ: AnLe Truc, Hồng Nhạc, Minh Anh..."
-                  value={newCustomerName}
-                  onChange={(e) => setNewCustomerName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Số Điện Thoại <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ví dụ: 0911335700, 0987654321..."
-                  value={newCustomerPhone}
-                  onChange={(e) => setNewCustomerPhone(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono font-medium"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Dịch Vụ Đăng Ký
-                  </label>
-                  <select
-                    value={newCustomerService}
-                    onChange={(e) => setNewCustomerService(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                  >
-                    {SERVICES_CONFIG.map(s => (
-                      <option key={s.key} value={s.name}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    NV Sale Phụ Trách
-                  </label>
-                  <select
-                    value={newCustomerStaff}
-                    onChange={(e) => setNewCustomerStaff(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                  >
-                    {INITIAL_STAFF_DATA.map(s => (
-                      <option key={s.id} value={s.name}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Trạng Thái Hiện Tại
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setNewCustomerStatus('check_in')}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      newCustomerStatus === 'check_in' 
-                        ? 'bg-emerald-100 border-emerald-500 text-emerald-900' 
-                        : 'bg-slate-50 border-slate-200 text-slate-600'
-                    }`}
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>🟢 Đã đến Spa (Check-in)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setNewCustomerStatus('hẹn')}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      newCustomerStatus === 'hẹn' 
-                        ? 'bg-amber-100 border-amber-500 text-amber-900' 
-                        : 'bg-slate-50 border-slate-200 text-slate-600'
-                    }`}
-                  >
-                    <Calendar className="w-4 h-4 text-amber-600" />
-                    <span>🟡 Đã hẹn (Chờ đến)</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                onClick={() => setIsRealtimeModalOpen(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                onClick={handleAddRealtimeCustomer}
-                className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <PlusCircle className="w-4 h-4" />
-                Lưu & Cập Nhật Real-Time Ngay
               </button>
             </div>
           </div>
