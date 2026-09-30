@@ -1063,7 +1063,9 @@ export const SpaDashboard: React.FC = () => {
                 </h3>
               </div>
               <div className="text-xs text-slate-300 mt-1 flex flex-wrap items-center gap-3">
-                <span><strong>Tuần:</strong> {currentWeek.name} {currentWeek.month}</span>
+                <span>
+                  <strong>Tuần:</strong> {selectedWeekId === 'all' ? `Tổng Toàn ${currentMonth.name}` : `${currentWeek.name} (${currentWeek.dateRange})`}
+                </span>
                 <span>•</span>
                 <span><strong>Thời gian:</strong> {currentWeek.dateRange}</span>
                 {currentWeek.isCurrent && (
@@ -1079,34 +1081,54 @@ export const SpaDashboard: React.FC = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
+            <table className="w-full text-xs border-collapse table-fixed">
+              {/* Định nghĩa kích thước cố định cân đối tuyệt đối cho từng cột */}
+              <colgroup>
+                <col className="w-[180px] min-w-[170px]" />
+                {SERVICES_CONFIG.map(svc => (
+                  <React.Fragment key={svc.key}>
+                    <col className="w-[48px]" />
+                    <col className="w-[48px]" />
+                    <col className="w-[64px]" />
+                  </React.Fragment>
+                ))}
+              </colgroup>
+
               <thead>
-                {/* Level 1: Category headers */}
+                {/* Level 1: Category headers - Phân tách rõ ràng từng dịch vụ */}
                 <tr className="bg-[#1e3a5f] text-white font-bold border-b border-slate-400">
-                  <th className="py-2.5 px-3 text-left sticky left-0 bg-[#1e3a5f] z-20 min-w-[130px] md:min-w-[145px] border-r border-slate-400 text-xs">
+                  <th className="py-2.5 px-3 text-left sticky left-0 bg-[#1e3a5f] z-20 border-r-2 border-slate-400 text-xs">
                     Phễu
                   </th>
-                  {SERVICES_CONFIG.map(svc => (
+                  {SERVICES_CONFIG.map((svc, sIdx) => (
                     <th 
                       key={svc.key} 
                       colSpan={3} 
-                      className="py-2.5 px-1 text-center border-r border-slate-400 min-w-[105px] md:min-w-[120px] text-xs"
+                      className={`py-2.5 px-2 text-center text-xs font-bold tracking-tight border-r-2 border-slate-400 ${
+                        sIdx % 2 === 0 ? 'bg-[#1e3a5f]' : 'bg-[#193252]'
+                      }`}
                     >
                       {svc.name}
                     </th>
                   ))}
                 </tr>
 
-                {/* Level 2: Sub-columns (RDT, CI, %) */}
-                <tr className="bg-[#1b324f] text-slate-100 font-bold border-b border-slate-400">
-                  <th className="py-2 px-3 text-left sticky left-0 bg-[#1b324f] z-20 border-r border-slate-400 text-xs">
+                {/* Level 2: Sub-columns (RDT, CI, %) - Cân đối, màu sắc rõ ràng */}
+                <tr className="bg-[#172b44] text-slate-100 font-bold border-b border-slate-400">
+                  <th className="py-2 px-3 text-left sticky left-0 bg-[#172b44] z-20 border-r-2 border-slate-400 text-xs">
                     NV sale
                   </th>
                   {SERVICES_CONFIG.map(svc => (
                     <React.Fragment key={svc.key}>
-                      <th className="py-2 px-0.5 text-center w-8 md:w-10 border-r border-slate-600 font-semibold text-[10px] md:text-[11px]">RDT</th>
-                      <th className="py-2 px-0.5 text-center w-8 md:w-10 border-r border-slate-600 font-semibold text-[10px] md:text-[11px] text-emerald-300">CI</th>
-                      <th className="py-2 px-0.5 text-center w-11 md:w-13 border-r border-slate-400 font-semibold text-[10px] md:text-[11px] text-amber-200">%</th>
+                      <th className="py-2 px-0.5 text-center border-r border-slate-600 font-semibold text-[11px] text-slate-300">
+                        RDT
+                      </th>
+                      <th className="py-2 px-0.5 text-center border-r border-slate-600 font-bold text-[11px] text-emerald-300 bg-emerald-950/20">
+                        CI
+                      </th>
+                      <th className="py-2 px-0.5 text-center border-r-2 border-slate-400 font-bold text-[11px] text-amber-300">
+                        %
+                      </th>
                     </React.Fragment>
                   ))}
                 </tr>
@@ -1116,25 +1138,30 @@ export const SpaDashboard: React.FC = () => {
                 {filteredStaff.map((staff, idx) => (
                   <tr 
                     key={staff.id} 
-                    className={`hover:bg-blue-50/60 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}
+                    className={`hover:bg-blue-50/70 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}`}
                   >
-                    {/* Staff Name Column - Fixed to the left */}
-                    <td className="py-2 px-3 font-semibold text-slate-900 sticky left-0 bg-inherit z-10 border-r border-slate-300 shadow-xs whitespace-nowrap text-xs">
+                    {/* Staff Name Column - Cố định gọn gàng không bị kéo dài rỗng */}
+                    <td className="py-2.5 px-3 font-semibold text-slate-900 sticky left-0 bg-inherit z-10 border-r-2 border-slate-300 shadow-xs whitespace-nowrap text-xs">
                       {staff.name}
                     </td>
 
-                    {/* Service Columns */}
-                    {SERVICES_CONFIG.map(svc => {
+                    {/* Service Columns - Cân đối từng nhóm dịch vụ */}
+                    {SERVICES_CONFIG.map((svc, sIdx) => {
                       const item = staff.services[svc.key];
+                      const isOddGroup = sIdx % 2 === 1;
                       return (
                         <React.Fragment key={svc.key}>
-                          <td className="py-2 px-0.5 text-center border-r border-slate-200 font-medium text-slate-700 text-xs">
+                          <td className={`py-2 px-1 text-center border-r border-slate-200 font-medium text-slate-700 text-xs tabular-nums ${
+                            isOddGroup ? 'bg-slate-50/30' : ''
+                          }`}>
                             {item.rdt}
                           </td>
-                          <td className="py-2 px-0.5 text-center border-r border-slate-200 font-bold text-emerald-600 text-xs">
+                          <td className={`py-2 px-1 text-center border-r border-slate-200 font-bold text-emerald-600 text-xs tabular-nums bg-emerald-50/30`}>
                             {item.ci}
                           </td>
-                          <td className="py-2 px-0.5 text-center border-r border-slate-300">
+                          <td className={`py-2 px-1 text-center border-r-2 border-slate-300 ${
+                            isOddGroup ? 'bg-slate-50/30' : ''
+                          }`}>
                             {renderRateBadge(item.rate)}
                           </td>
                         </React.Fragment>
@@ -1145,20 +1172,23 @@ export const SpaDashboard: React.FC = () => {
 
                 {/* TOTAL ROW (MATCHING SPREADSHEET BOTTOM ROW) */}
                 <tr className="bg-slate-200 font-black text-slate-900 border-t-2 border-slate-400">
-                  <td className="py-2.5 px-3 text-left sticky left-0 bg-slate-200 z-10 border-r border-slate-400 font-black uppercase tracking-wider text-xs">
+                  <td className="py-3 px-3 text-left sticky left-0 bg-slate-200 z-10 border-r-2 border-slate-400 font-black uppercase tracking-wider text-xs">
                     TỔNG
                   </td>
-                  {SERVICES_CONFIG.map(svc => {
+                  {SERVICES_CONFIG.map((svc, sIdx) => {
                     const totalItem = dynamicTotals[svc.key];
+                    const isOddGroup = sIdx % 2 === 1;
                     return (
                       <React.Fragment key={svc.key}>
-                        <td className="py-2.5 px-0.5 text-center border-r border-slate-300 font-black text-xs">
+                        <td className={`py-2.5 px-1 text-center border-r border-slate-300 font-black text-xs tabular-nums ${
+                          isOddGroup ? 'bg-slate-200/90' : ''
+                        }`}>
                           {totalItem.rdt}
                         </td>
-                        <td className="py-2.5 px-0.5 text-center border-r border-slate-300 font-black text-emerald-700 text-xs">
+                        <td className="py-2.5 px-1 text-center border-r border-slate-300 font-black text-emerald-700 text-xs tabular-nums bg-emerald-100/40">
                           {totalItem.ci}
                         </td>
-                        <td className="py-2.5 px-0.5 text-center border-r border-slate-400 font-black">
+                        <td className="py-2.5 px-1 text-center border-r-2 border-slate-400 font-black">
                           {renderRateBadge(totalItem.rate)}
                         </td>
                       </React.Fragment>
