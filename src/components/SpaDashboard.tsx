@@ -108,6 +108,57 @@ export const EMPTY_STAFF_DATA: StaffPerformance[] = INITIAL_STAFF_DATA.map(s => 
   }
 }));
 
+// Tự động phân tích và tính toán ma trận số liệu khi có dữ liệu mới phát sinh (tự động nhận diện NV mới, đổi người)
+export const buildStaffDataFromRaw = (records: RawCustomerRecord[]): StaffPerformance[] => {
+  // Trích xuất danh sách tất cả nhân viên xuất hiện trong dữ liệu thực tế
+  const rawStaffNames = Array.from(
+    new Set(
+      records
+        .map(r => r.staffName?.trim())
+        .filter((name): name is string => Boolean(name && name.length > 0))
+    )
+  );
+
+  // Nếu trong dữ liệu chưa có tên nào thì fallback về danh sách mặc định
+  const targetStaffNames = rawStaffNames.length > 0 
+    ? rawStaffNames 
+    : INITIAL_STAFF_DATA.map(s => s.name);
+
+  return targetStaffNames.map((staffName, idx) => {
+    const existing = INITIAL_STAFF_DATA.find(s => s.name.trim().toLowerCase() === staffName.toLowerCase());
+    const staffId = existing ? existing.id : `staff-auto-${idx + 1}`;
+    const staffRecords = records.filter(r => r.staffName?.trim().toLowerCase() === staffName.toLowerCase());
+    const services: any = {};
+
+    SERVICES_CONFIG.forEach(svc => {
+      const svcRecords = staffRecords.filter(r => {
+        const sLower = (r.service || '').toLowerCase();
+        if (svc.key === 'tamTrang') return sLower.includes('tắm trắng');
+        if (svc.key === 'trietNachNu') return sLower.includes('triệt nách') && (sLower.includes('nữ') || !sLower.includes('nam'));
+        if (svc.key === 'trietBikiniNu') return sLower.includes('bikini') && (sLower.includes('nữ') || !sLower.includes('nam'));
+        if (svc.key === 'trietNachNam') return sLower.includes('triệt nách') && sLower.includes('nam');
+        if (svc.key === 'trietBikiniNam') return sLower.includes('bikini') && sLower.includes('nam');
+        if (svc.key === 'munMatCSD') return sLower.includes('mụn');
+        if (svc.key === 'triThamNu') return sLower.includes('thâm');
+        if (svc.key === 'seoRo') return sLower.includes('sẹo');
+        if (svc.key === 'lcl') return sLower.includes('lcl');
+        return sLower.includes(svc.name.toLowerCase());
+      });
+
+      const rdt = svcRecords.length;
+      const ci = svcRecords.filter(r => r.status === 'check_in').length;
+      const rate = rdt > 0 ? Number(((ci / rdt) * 100).toFixed(1)) : null;
+      services[svc.key] = { rdt, ci, rate };
+    });
+
+    return {
+      id: staffId,
+      name: staffName,
+      services
+    };
+  });
+};
+
 export interface RawCustomerRecord {
   id: string;
   stt: number;
@@ -459,7 +510,17 @@ export const SpaDashboard: React.FC = () => {
 
   // Dynamic staff data according to selected user filter, month & week
   const staffData = useMemo(() => {
-    // User 724:
+    // Tháng 10/2026 (hoặc bất kỳ tháng nào chưa có dữ liệu):
+    // Mặc định để trống hoàn toàn (0 RDT, 0 CI, #DIV/0).
+    // Khi nào có dữ liệu từ link hoặc nạp file thì tự động cập nhật!
+    if (selectedMonthId !== '2026-09') {
+      if (customImportedRecords && customImportedRecords.length > 0) {
+        return buildStaffDataFromRaw(customImportedRecords);
+      }
+      return EMPTY_STAFF_DATA;
+    }
+
+    // Tháng 9 (User 724):
     if (activeUserFilter === '724') {
       if (selectedWeekId === 'all') {
         return USER_724_STAFF_DATA; // Tổng cộng đúng 1.418 Khách Đến (CI)!
@@ -467,14 +528,10 @@ export const SpaDashboard: React.FC = () => {
       return USER_724_WEEKS_DATA[selectedWeekId] || USER_724_WEEKS_DATA.w4;
     }
 
-    if (selectedMonthId !== '2026-09') {
-      return EMPTY_STAFF_DATA;
-    }
-
     return selectedWeekId === 'all'
       ? SEPTEMBER_CUMULATIVE_TO_DATE
       : (SEPTEMBER_WEEKS_DATA[selectedWeekId] || INITIAL_STAFF_DATA);
-  }, [activeUserFilter, selectedMonthId, selectedWeekId]);
+  }, [activeUserFilter, selectedMonthId, selectedWeekId, customImportedRecords]);
 
   // Filter staff rows
   const filteredStaff = useMemo(() => {
@@ -590,11 +647,49 @@ export const SpaDashboard: React.FC = () => {
         return;
       }
 
+      const parsed: RawCustomerRecord[] = [];
+      const dataLines = lines.slice(1);
+      dataLines.forEach((line, idx) => {
+        if (!line.trim()) return;
+        const cols = line.includes('\t') ? line.split('\t') : line.split(',');
+        const clean = cols.map(c => c.trim().replace(/^["']|["']$/g, ''));
+        if (clean.length >= 2) {
+          const staffName = clean[4] || clean[3] || clean[0] || 'Nhân viên';
+          const service = clean[3] || clean[2] || clean[1] || 'Triệt nách (nữ)';
+          const statusRaw = (clean[5] || clean[4] || '').toLowerCase();
+          let status: RawCustomerRecord['status'] = 'hẹn';
+          if (statusRaw.includes('đến') || statusRaw.includes('check') || statusRaw.includes('ci')) {
+            status = 'check_in';
+          } else if (statusRaw.includes('hủy') || statusRaw.includes('bùng')) {
+            status = 'hủy';
+          } else if (statusRaw.includes('chưa')) {
+            status = 'chưa_đến';
+          }
+
+          parsed.push({
+            id: `import-${Date.now()}-${idx}`,
+            stt: idx + 1,
+            phone: clean[1] || `09${Math.floor(10000000 + Math.random() * 90000000)}`,
+            fbName: clean[2] || `Khách hàng ${idx + 1}`,
+            service,
+            staffName,
+            status,
+            date: new Date().toISOString().slice(0, 10)
+          });
+        }
+      });
+
+      if (parsed.length > 0) {
+        setCustomImportedRecords(parsed);
+        const distinctStaff = Array.from(new Set(parsed.map(p => p.staffName)));
+        setRealtimeNotification(`✅ Đã nạp thành công ${parsed.length} khách! Nhận diện ${distinctStaff.length} nhân sự mới và cập nhật bảng báo cáo.`);
+      }
+
       setImportMessage(`✅ Đã phân tích thành công ${lines.length} dòng dữ liệu! Bảng báo cáo đã được cập nhật.`);
       setTimeout(() => {
         setIsImportModalOpen(false);
         setImportMessage(null);
-      }, 1500);
+      }, 1200);
     } catch (e: any) {
       setImportMessage('Lỗi phân tích: ' + e.message);
     }
@@ -627,98 +722,100 @@ export const SpaDashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner & Control Bar */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-5 md:p-6 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      {/* Main Control Panel: Compact Header, Filters & Center View Tabs */}
+      <div className="bg-white rounded-2xl md:rounded-3xl border border-slate-200 p-4 md:p-5 shadow-xs">
+        {/* Compact Header Top Row */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-950 border border-blue-300 flex items-center gap-1.5 shadow-2xs">
-                <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-900 border border-blue-200 flex items-center gap-1.5 shadow-2xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
                 <span>User 724 (Sheet 28)</span>
               </span>
-              <span className="text-xs text-blue-900 font-semibold px-2.5 py-0.5 rounded-lg bg-blue-50 border border-blue-200 flex items-center gap-1.5 shadow-2xs">
-                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              <span className="text-xs text-blue-900 font-semibold px-2 py-0.5 rounded-lg bg-blue-50 border border-blue-200 flex items-center gap-1 shadow-2xs">
+                <Calendar className="w-3 h-3 text-blue-600" />
                 <span>
                   {selectedWeekId === 'all' 
-                    ? `🌟 Tổng Toàn ${currentMonth.name} (${currentWeek.dateRange})`
-                    : `${currentWeek.name} ${currentWeek.month} (${currentWeek.dateRange})`
+                    ? `🌟 Cả ${currentMonth.name} (${currentWeek.dateRange})`
+                    : `${currentWeek.name} (${currentWeek.dateRange})`
                   }
                 </span>
               </span>
             </div>
-            <h2 className="text-xl md:text-2xl font-black text-slate-900 mt-1">
+            <h2 className="text-lg md:text-xl font-black text-slate-900 mt-1 tracking-tight">
               {selectedWeekId === 'all'
                 ? `Báo Cáo Tổng Hợp Cả ${currentMonth.name.toUpperCase()} (TỔNG CÁC TUẦN)`
-                : `Báo Cáo Chỉ Số Phễu Dịch Vụ (Có Tính LTPS) — ${currentWeek.name}`
+                : `Báo Cáo Chỉ Số Phễu Dịch Vụ — ${currentWeek.name}`
               }
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-1">
-              <span>Dữ liệu thô từ:</span>
+            <p className="text-[11px] text-slate-500 mt-0.5 flex flex-wrap items-center gap-1">
+              <span>Dữ liệu:</span>
               <a 
                 href={`https://airtable.littlegardenspa.vn/?filter_user=${activeUserFilter}&sheet_id=28`} 
                 target="_blank" 
                 rel="noreferrer" 
-                className="text-blue-600 underline font-mono font-medium"
+                className="text-blue-600 hover:text-blue-800 underline font-mono font-medium"
               >
                 airtable.littlegardenspa.vn/?filter_user={activeUserFilter}&sheet_id=28
               </a>
             </p>
           </div>
 
-          {/* Quick Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Tự động đồng bộ với link Airtable */}
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-semibold shadow-2xs">
-              <span className={`w-2.5 h-2.5 rounded-full bg-emerald-500 ${isSyncingWithLink ? 'animate-ping' : 'animate-pulse'}`}></span>
-              <span>Tự động đồng bộ link: <strong className="text-emerald-800">BẬT</strong></span>
+          {/* Compact Action Buttons */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Tự động đồng bộ link */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold shadow-2xs">
+              <span className={`w-2 h-2 rounded-full bg-emerald-500 ${isSyncingWithLink ? 'animate-ping' : 'animate-pulse'}`}></span>
+              <span className="text-[11px]">Đồng bộ: <strong className="text-emerald-800">BẬT</strong></span>
               <button
                 onClick={handleManualSyncLink}
                 disabled={isSyncingWithLink}
-                className="ml-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer flex items-center gap-1 text-[11px] font-bold shadow-2xs disabled:opacity-50"
-                title="Bấm để đồng bộ dữ liệu mới nhất từ link ngay lập tức"
+                className="ml-0.5 px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold shadow-2xs disabled:opacity-50"
+                title="Bấm để đồng bộ dữ liệu mới nhất từ link"
               >
-                <RefreshCw className={`w-3 h-3 ${isSyncingWithLink ? 'animate-spin' : ''}`} />
-                <span>{isSyncingWithLink ? 'Đang tải...' : 'Làm mới'}</span>
+                <RefreshCw className={`w-2.5 h-2.5 ${isSyncingWithLink ? 'animate-spin' : ''}`} />
+                <span>{isSyncingWithLink ? '...' : 'Làm mới'}</span>
               </button>
             </div>
 
             <button
               onClick={() => setIsArchiveModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-50 border border-indigo-200 text-indigo-900 hover:bg-indigo-100 transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 border border-indigo-200 text-indigo-900 hover:bg-indigo-100 transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
               title="Quản lý đóng sổ và lưu trữ dữ liệu các tháng"
             >
               <FolderArchive className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Kho Lưu Trữ Tháng</span>
+              <span>Kho Lưu Trữ</span>
               {currentMonth.isArchived && (
-                <span className="w-2 h-2 rounded-full bg-emerald-500" title="Tháng đã được lưu trữ an toàn"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
               )}
             </button>
             <button
               onClick={() => setIsImportModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 transition-all flex items-center gap-1 shadow-xs cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
-              Nạp Dữ Liệu Thô (CSV / Paste)
+              <span>Nạp Dữ Liệu</span>
             </button>
             <button
               onClick={handleExportCSV}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-300 transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-700 hover:bg-slate-100 border border-slate-300 transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
-              Xuất Excel
+              <span>Xuất Excel</span>
             </button>
             <button
               onClick={() => window.print()}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all flex items-center gap-1.5 cursor-pointer"
+              className="px-2 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-300 transition-all flex items-center gap-1 cursor-pointer"
+              title="In báo cáo"
             >
               <Printer className="w-3.5 h-3.5" />
-              In Báo Cáo
             </button>
           </div>
         </div>
 
         {/* Real-time Notification Banner */}
         {realtimeNotification && (
-          <div className="mt-4 p-3 bg-emerald-600 text-white rounded-2xl text-xs font-bold shadow-md flex items-center justify-between gap-3">
+          <div className="mt-3 p-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-200 shrink-0" />
               <span>{realtimeNotification}</span>
@@ -732,11 +829,11 @@ export const SpaDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* Filters and View toggles */}
-        <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3">
+        {/* Filters Toolbar */}
+        <div className="mt-3.5 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+          <div className="flex flex-wrap items-center gap-2.5">
             {/* Bộ Lọc Tháng */}
-            <div className="flex items-center gap-1.5 bg-indigo-50/70 border border-indigo-200 rounded-xl px-2.5 py-1 text-xs shadow-2xs">
+            <div className="flex items-center gap-1.5 bg-indigo-50/70 border border-indigo-200 rounded-xl px-2.5 py-1 shadow-2xs">
               <span className="font-bold text-indigo-950 flex items-center gap-1">
                 <FolderArchive className="w-3.5 h-3.5 text-indigo-600" /> Tháng:
               </span>
@@ -754,14 +851,14 @@ export const SpaDashboard: React.FC = () => {
             </div>
 
             {/* Bộ Lọc Tuần */}
-            <div className="flex items-center gap-1.5 bg-blue-50/70 border border-blue-200 rounded-xl px-2.5 py-1 text-xs shadow-2xs">
-              <span className="font-bold text-blue-900 flex items-center gap-1">
+            <div className="flex items-center gap-1 bg-blue-50/70 border border-blue-200 rounded-xl px-2 py-1 shadow-2xs">
+              <span className="font-bold text-blue-900 flex items-center gap-1 pl-1">
                 <Calendar className="w-3.5 h-3.5 text-blue-600" /> Tuần:
               </span>
               <button
                 onClick={handlePrevWeek}
                 disabled={selectedWeekId === 'all'}
-                className="p-1 text-blue-700 hover:text-blue-950 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer rounded hover:bg-blue-100 transition-colors"
+                className="p-0.5 text-blue-700 hover:text-blue-950 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer rounded hover:bg-blue-100 transition-colors"
                 title="Tuần trước"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
@@ -781,7 +878,7 @@ export const SpaDashboard: React.FC = () => {
               <button
                 onClick={handleNextWeek}
                 disabled={selectedWeekId === activeWeeks[activeWeeks.length - 1]?.id}
-                className="p-1 text-blue-700 hover:text-blue-950 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer rounded hover:bg-blue-100 transition-colors"
+                className="p-0.5 text-blue-700 hover:text-blue-950 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer rounded hover:bg-blue-100 transition-colors"
                 title="Tuần sau"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -789,54 +886,76 @@ export const SpaDashboard: React.FC = () => {
             </div>
 
             {/* Filter by Staff */}
-            <div className="flex items-center gap-2 text-xs">
-              <span className="font-semibold text-slate-700 flex items-center gap-1">
-                <Users className="w-3.5 h-3.5 text-slate-600" /> Nhân viên:
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-slate-600 flex items-center gap-1">
+                <Users className="w-3.5 h-3.5 text-slate-500" /> Nhân viên:
               </span>
               <select
                 value={selectedStaff}
                 onChange={(e) => setSelectedStaff(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1 text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
               >
-                <option value="all">Tất cả nhân viên (11 người)</option>
+                <option value="all">Tất cả ({staffData.length} nhân sự)</option>
                 {staffData.map(s => (
                   <option key={s.id} value={s.name}>{s.name}</option>
                 ))}
               </select>
             </div>
-
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="Tìm tên nhân viên..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
-              />
-            </div>
           </div>
 
-          {/* View Mode Switcher */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+          {/* Search Input */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+            <input
+              type="text"
+              placeholder="Tìm nhân viên, KH, SĐT..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-7 pr-2.5 py-1 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 w-44 md:w-52"
+            />
+          </div>
+        </div>
+
+        {/* VIEW MODE TABS - CANH GIỮA HOÀN HẢO & THIẾT KẾ ĐẸP TINH GỌN */}
+        <div className="flex justify-center pt-3 pb-0.5 border-t border-slate-100 mt-3">
+          <div className="bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/90 shadow-inner flex flex-wrap items-center justify-center gap-1.5">
+            {/* Tab 1: Bảng Báo Cáo */}
             <button
               onClick={() => setViewMode('matrix')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${viewMode === 'matrix' ? 'bg-white shadow-xs text-blue-700 font-bold' : 'text-slate-600'}`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-150 flex items-center gap-2 cursor-pointer ${
+                viewMode === 'matrix'
+                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200/80 scale-[1.02]'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
             >
-              Bảng Báo Cáo
+              <FileSpreadsheet className={`w-4 h-4 ${viewMode === 'matrix' ? 'text-blue-600' : 'text-slate-400'}`} />
+              <span>Bảng Báo Cáo</span>
             </button>
+
+            {/* Tab 2: Thẻ Đánh Giá Từng Bạn */}
             <button
               onClick={() => setViewMode('cards')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${viewMode === 'cards' ? 'bg-white shadow-xs text-blue-700 font-bold' : 'text-slate-600'}`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-150 flex items-center gap-2 cursor-pointer ${
+                viewMode === 'cards'
+                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200/80 scale-[1.02]'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
             >
-              Thẻ Đánh Giá Từng Bạn
+              <Users className={`w-4 h-4 ${viewMode === 'cards' ? 'text-blue-600' : 'text-slate-400'}`} />
+              <span>Thẻ Đánh Giá Từng Bạn</span>
             </button>
+
+            {/* Tab 3: Dữ Liệu Khách Thô */}
             <button
               onClick={() => setViewMode('raw_table')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${viewMode === 'raw_table' ? 'bg-white shadow-xs text-blue-700 font-bold' : 'text-slate-600'}`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-150 flex items-center gap-2 cursor-pointer ${
+                viewMode === 'raw_table'
+                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200/80 scale-[1.02]'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
             >
-              Dữ Liệu Khách Thô (Raw Leads)
+              <Layers className={`w-4 h-4 ${viewMode === 'raw_table' ? 'text-blue-600' : 'text-slate-400'}`} />
+              <span>Dữ Liệu Khách Thô (Raw Leads)</span>
             </button>
           </div>
         </div>
@@ -1079,7 +1198,7 @@ export const SpaDashboard: React.FC = () => {
               totalRDT += m.rdt;
               totalCI += m.ci;
             });
-            const avgRate = totalRDT > 0 ? (totalCI / totalRDT) * 100 : 0;
+            const avgRate = totalRDT > 0 ? (totalCI / totalRDT) * 100 : null;
 
             return (
               <div key={staff.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:border-blue-300 transition-all">
@@ -1095,9 +1214,15 @@ export const SpaDashboard: React.FC = () => {
                   </div>
                   <div className="text-right">
                     <span className="text-[10px] uppercase font-bold text-slate-400 block">Tỷ lệ chung</span>
-                    <span className={`text-base font-black ${avgRate >= 45 ? 'text-emerald-600' : avgRate < 35 ? 'text-rose-600' : 'text-amber-600'}`}>
-                      {avgRate.toFixed(1)}%
-                    </span>
+                    {avgRate !== null ? (
+                      <span className={`text-base font-black ${avgRate >= 45 ? 'text-emerald-600' : avgRate < 35 ? 'text-rose-600' : 'text-amber-600'}`}>
+                        {avgRate.toFixed(1)}%
+                      </span>
+                    ) : (
+                      <span className="text-sm font-bold text-slate-400 font-mono">
+                        #DIV/0
+                      </span>
+                    )}
                   </div>
                 </div>
 
