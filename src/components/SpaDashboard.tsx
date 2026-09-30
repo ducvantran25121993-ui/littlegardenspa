@@ -530,6 +530,36 @@ export const SpaDashboard: React.FC = () => {
     };
   }, [dynamicTotals]);
 
+  // Dynamic Top Sale calculation based on actual staff performance of active week/month
+  const topSale = useMemo(() => {
+    if (filteredStaff.length === 0) return null;
+
+    const ranked = filteredStaff.map(staff => {
+      let staffCI = 0;
+      let staffRDT = 0;
+      Object.values(staff.services).forEach(s => {
+        staffCI += s.ci;
+        staffRDT += s.rdt;
+      });
+      const rate = staffRDT > 0 ? (staffCI / staffRDT) * 100 : 0;
+      return {
+        staff,
+        name: staff.name,
+        ci: staffCI,
+        rdt: staffRDT,
+        rate
+      };
+    });
+
+    // Rank by Check-in (CI) as primary, rate as secondary
+    ranked.sort((a, b) => {
+      if (b.ci !== a.ci) return b.ci - a.ci;
+      return b.rate - a.rate;
+    });
+
+    return ranked[0];
+  }, [filteredStaff]);
+
   // Helper to format percentage with color badges
   const renderRateBadge = (rate: number | null) => {
     if (rate === null) {
@@ -848,14 +878,21 @@ export const SpaDashboard: React.FC = () => {
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
-          <span className="text-xs font-semibold text-slate-500 block">Top Sale Xuất Sắc</span>
-          {grandTotal.rdt > 0 ? (
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 block">Top Sale Xuất Sắc</span>
+            {topSale && topSale.ci > 0 && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                Check-in Cao Nhất
+              </span>
+            )}
+          </div>
+          {topSale && topSale.ci > 0 ? (
             <>
-              <div className="text-sm font-black text-slate-900 mt-2 truncate">
-                🥇 Nguyễn Thị Khánh Vân
+              <div className="text-sm font-black text-slate-900 mt-1.5 truncate" title={topSale.name}>
+                🥇 {topSale.name}
               </div>
-              <span className="text-[11px] text-emerald-600 font-semibold block">
-                53.2% Nách • 45.2% Bikini • 63.6% Tắm trắng
+              <span className="text-[11px] text-emerald-600 font-semibold block mt-0.5">
+                {topSale.ci} khách đến • Tỷ lệ {topSale.rate.toFixed(1)}% ({topSale.rdt} hẹn)
               </span>
             </>
           ) : (
