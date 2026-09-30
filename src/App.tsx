@@ -14,7 +14,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 text-slate-900 font-sans flex flex-col selection:bg-emerald-500 selection:text-white">
       {/* Top Navbar */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
-        <div className="w-full max-w-[99%] 2xl:max-w-[1920px] mx-auto px-3 sm:px-6">
+        <div className="w-full max-w-[1650px] mx-auto px-3 sm:px-6">
           <div className="flex items-center justify-between h-16">
             {/* Brand Logo & Title */}
             <div className="flex items-center gap-3">
@@ -40,13 +40,13 @@ export default function App() {
       </header>
 
       {/* Main Content Area: Direct Dashboard */}
-      <main className="flex-1 w-full max-w-[99%] 2xl:max-w-[1920px] mx-auto px-3 sm:px-6 py-4 sm:py-6">
+      <main className="flex-1 w-full max-w-[1650px] mx-auto px-3 sm:px-6 py-4 sm:py-6">
         <SpaDashboard />
       </main>
 
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-6 mt-12 text-center text-xs text-slate-500">
-        <div className="w-full max-w-[99%] 2xl:max-w-[1920px] mx-auto px-4">
+        <div className="w-full max-w-[1650px] mx-auto px-4">
           <p className="font-semibold text-slate-700">Hệ Thống Phân Tích Dữ Liệu Phễu Thẩm Mỹ Viện & Spa</p>
           <p className="mt-1 text-slate-400">
             Hỗ trợ kết nối & phân tích dữ liệu cho Little Garden Spa (Team Ngân - User 358 - Sheet 28)
