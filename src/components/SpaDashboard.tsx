@@ -1083,14 +1083,14 @@ export const SpaDashboard: React.FC = () => {
               <thead>
                 {/* Level 1: Category headers */}
                 <tr className="bg-[#1e3a5f] text-white font-bold border-b border-slate-400">
-                  <th className="py-2.5 px-3 text-left sticky left-0 bg-[#1e3a5f] z-20 min-w-[170px] border-r border-slate-400">
+                  <th className="py-2.5 px-3 text-left sticky left-0 bg-[#1e3a5f] z-20 min-w-[130px] md:min-w-[145px] border-r border-slate-400 text-xs">
                     Phễu
                   </th>
                   {SERVICES_CONFIG.map(svc => (
                     <th 
                       key={svc.key} 
                       colSpan={3} 
-                      className="py-2.5 px-2 text-center border-r border-slate-400 min-w-[150px]"
+                      className="py-2.5 px-1 text-center border-r border-slate-400 min-w-[105px] md:min-w-[120px] text-xs"
                     >
                       {svc.name}
                     </th>
@@ -1099,14 +1099,14 @@ export const SpaDashboard: React.FC = () => {
 
                 {/* Level 2: Sub-columns (RDT, CI, %) */}
                 <tr className="bg-[#1b324f] text-slate-100 font-bold border-b border-slate-400">
-                  <th className="py-2 px-3 text-left sticky left-0 bg-[#1b324f] z-20 border-r border-slate-400">
+                  <th className="py-2 px-3 text-left sticky left-0 bg-[#1b324f] z-20 border-r border-slate-400 text-xs">
                     NV sale
                   </th>
                   {SERVICES_CONFIG.map(svc => (
                     <React.Fragment key={svc.key}>
-                      <th className="py-2 px-1 text-center w-12 border-r border-slate-600 font-semibold text-[11px]">RDT</th>
-                      <th className="py-2 px-1 text-center w-12 border-r border-slate-600 font-semibold text-[11px] text-emerald-300">CI</th>
-                      <th className="py-2 px-1 text-center w-14 border-r border-slate-400 font-semibold text-[11px] text-amber-200">%</th>
+                      <th className="py-2 px-0.5 text-center w-8 md:w-10 border-r border-slate-600 font-semibold text-[10px] md:text-[11px]">RDT</th>
+                      <th className="py-2 px-0.5 text-center w-8 md:w-10 border-r border-slate-600 font-semibold text-[10px] md:text-[11px] text-emerald-300">CI</th>
+                      <th className="py-2 px-0.5 text-center w-11 md:w-13 border-r border-slate-400 font-semibold text-[10px] md:text-[11px] text-amber-200">%</th>
                     </React.Fragment>
                   ))}
                 </tr>
@@ -1119,7 +1119,7 @@ export const SpaDashboard: React.FC = () => {
                     className={`hover:bg-blue-50/60 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}
                   >
                     {/* Staff Name Column - Fixed to the left */}
-                    <td className="py-2.5 px-3 font-semibold text-slate-900 sticky left-0 bg-inherit z-10 border-r border-slate-300 shadow-xs whitespace-nowrap">
+                    <td className="py-2 px-3 font-semibold text-slate-900 sticky left-0 bg-inherit z-10 border-r border-slate-300 shadow-xs whitespace-nowrap text-xs">
                       {staff.name}
                     </td>
 
@@ -1128,13 +1128,13 @@ export const SpaDashboard: React.FC = () => {
                       const item = staff.services[svc.key];
                       return (
                         <React.Fragment key={svc.key}>
-                          <td className="py-2.5 px-1 text-center border-r border-slate-200 font-medium text-slate-700">
+                          <td className="py-2 px-0.5 text-center border-r border-slate-200 font-medium text-slate-700 text-xs">
                             {item.rdt}
                           </td>
-                          <td className="py-2.5 px-1 text-center border-r border-slate-200 font-bold text-emerald-600">
+                          <td className="py-2 px-0.5 text-center border-r border-slate-200 font-bold text-emerald-600 text-xs">
                             {item.ci}
                           </td>
-                          <td className="py-2.5 px-1 text-center border-r border-slate-300">
+                          <td className="py-2 px-0.5 text-center border-r border-slate-300">
                             {renderRateBadge(item.rate)}
                           </td>
                         </React.Fragment>
@@ -1145,20 +1145,20 @@ export const SpaDashboard: React.FC = () => {
 
                 {/* TOTAL ROW (MATCHING SPREADSHEET BOTTOM ROW) */}
                 <tr className="bg-slate-200 font-black text-slate-900 border-t-2 border-slate-400">
-                  <td className="py-3 px-3 text-left sticky left-0 bg-slate-200 z-10 border-r border-slate-400 font-black uppercase tracking-wider text-xs">
+                  <td className="py-2.5 px-3 text-left sticky left-0 bg-slate-200 z-10 border-r border-slate-400 font-black uppercase tracking-wider text-xs">
                     TỔNG
                   </td>
                   {SERVICES_CONFIG.map(svc => {
                     const totalItem = dynamicTotals[svc.key];
                     return (
                       <React.Fragment key={svc.key}>
-                        <td className="py-3 px-1 text-center border-r border-slate-300 font-black">
+                        <td className="py-2.5 px-0.5 text-center border-r border-slate-300 font-black text-xs">
                           {totalItem.rdt}
                         </td>
-                        <td className="py-3 px-1 text-center border-r border-slate-300 font-black text-emerald-700">
+                        <td className="py-2.5 px-0.5 text-center border-r border-slate-300 font-black text-emerald-700 text-xs">
                           {totalItem.ci}
                         </td>
-                        <td className="py-3 px-1 text-center border-r border-slate-400 font-black">
+                        <td className="py-2.5 px-0.5 text-center border-r border-slate-400 font-black">
                           {renderRateBadge(totalItem.rate)}
                         </td>
                       </React.Fragment>
