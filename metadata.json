@@ -1,0 +1,6 @@
+{
+  "name": "Spa Funnel Analytics & Data Extractor",
+  "description": "Chuyên gia phân tích số liệu phễu dịch vụ Thẩm mỹ viện & Hướng dẫn trích xuất dữ liệu Airtable nội bộ",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
